@@ -7,10 +7,10 @@
   <style>
     /* Dark, modern, mobile-friendly theme */
     body {
-      background-color: #121212; 
-      color: #e0e0e0; 
-      font-family: sans-serif; 
-      margin: 0; 
+      background-color: #121212;
+      color: #e0e0e0;
+      font-family: sans-serif;
+      margin: 0;
       padding: 0;
     }
     .container {
@@ -115,42 +115,37 @@
   <script>
     // ─── 1) Yardage tables from your images ────────────────────────────────────
     const clubData = {
-      'Driver':       { spinMapping:{100:323, 95:311, 90:292}, teeAdjustment: 0 },
-      '3W':           { spinMapping:{100:263, 95:251, 90:233}, teeAdjustment: 0 },
-      '3i':           { spinMapping:{50:218, 75:214,100:215}, teeAdjustment: 3 },
-      '4i':           { spinMapping:{50:201, 75:200,100:196}, teeAdjustment: 3 },
-      '5i':           { spinMapping:{50:190, 75:186,100:183}, teeAdjustment: 3 },
-      '6i':           { spinMapping:{50:174, 75:171,100:171}, teeAdjustment: 3 },
-      '7i':           { spinMapping:{50:161, 75:155,100:153}, teeAdjustment: 3 },
-      '8i':           { spinMapping:{50:151, 75:146,100:143}, teeAdjustment: 3 },
-      '9i':           { spinMapping:{50:133, 75:132,100:128}, teeAdjustment: 3 },
-      'PW':           { spinMapping:{50:119, 75:114,100:112}, teeAdjustment: 3 },
-      '64° LW Punch':{ spinMapping:{100:50,  95:47,  90:42 }, teeAdjustment: 0 },
-      '60° LW Punch':{ spinMapping:{100:69,  95:63,  90:58 }, teeAdjustment: 0 },
-      '56° SW Punch':{ spinMapping:{100:84,  95:77,  90:72 }, teeAdjustment: 0 }
-      // → You can extend this object with your fairway-wedge tables from the second image
+      'Driver':        { spinMapping:{100:323,95:311,90:292}, teeAdjustment: 0 },
+      '3W':            { spinMapping:{100:263,95:251,90:233}, teeAdjustment: 0 },
+      '3i':            { spinMapping:{50:218,75:214,100:215}, teeAdjustment: 3 },
+      '4i':            { spinMapping:{50:201,75:200,100:196}, teeAdjustment: 3 },
+      '5i':            { spinMapping:{50:190,75:186,100:183}, teeAdjustment: 3 },
+      '6i':            { spinMapping:{50:174,75:171,100:171}, teeAdjustment: 3 },
+      '7i':            { spinMapping:{50:161,75:155,100:153}, teeAdjustment: 3 },
+      '8i':            { spinMapping:{50:151,75:146,100:143}, teeAdjustment: 3 },
+      '9i':            { spinMapping:{50:133,75:132,100:128}, teeAdjustment: 3 },
+      'PW':            { spinMapping:{50:119,75:114,100:112}, teeAdjustment: 3 },
+      '64° LW Punch': { spinMapping:{100:50,95:47,90:42 }, teeAdjustment: 0 },
+      '60° LW Punch': { spinMapping:{100:69,95:63,90:58 }, teeAdjustment: 0 },
+      '56° SW Punch': { spinMapping:{100:84,95:77,90:72 }, teeAdjustment: 0 }
     };
 
     // ─── 2) Linear interpolation for spin% not in table ───────────────────────
     function getSpinDistance(club, spinPct) {
       const map = clubData[club].spinMapping;
       const keys = Object.keys(map).map(Number).sort((a,b)=>a-b);
-      // exact match?
       if (map[spinPct] !== undefined) {
         return map[spinPct] + clubData[club].teeAdjustment;
       }
-      // below lowest → linear extrapolate
       if (spinPct < keys[0]) {
         const [p0,p1] = keys;
         const d0=map[p0], d1=map[p1];
         const slope = (d1-d0)/(p1-p0);
         return d0 + slope*(spinPct-p0) + clubData[club].teeAdjustment;
       }
-      // above highest → clamp to max
       if (spinPct > keys[keys.length-1]) {
         return map[keys[keys.length-1]] + clubData[club].teeAdjustment;
       }
-      // in between → find segment
       for (let i=0; i<keys.length-1; i++) {
         const p0 = keys[i], p1 = keys[i+1];
         if (spinPct > p0 && spinPct < p1) {
@@ -161,36 +156,46 @@
       }
     }
 
-    // ─── 3) Wind & elevation adjustments ─────────────────────────────────────
-    function getWindAdjustment(speed, dir) {
-      // 1 mph ≈ 1 yd adjustment (tweak as you like)
-      switch(dir) {
-        case 'head':      return  speed;
-        case 'tail':      return -speed;
-        case 'diagHead':  return  speed * 0.5;
-        case 'diagTail':  return -speed * 0.5;
-        default:          return 0; // pure crosswind → no yardage change
+    // ─── 3) Updated head/tail wind & elevation adjustments ────────────────────
+    function getWindAdjustment(dist, speed, dir) {
+      switch (dir) {
+        case 'head':
+          // headwind: (distance/200) * mph
+          return (dist / 200) * speed;
+        case 'tail':
+          // tailwind: -(distance/250) * mph
+          return -(dist / 250) * speed;
+        case 'diagHead':
+          // half the headwind effect
+          return (dist / 200) * speed * 0.5;
+        case 'diagTail':
+          // half the tailwind effect
+          return -(dist / 250) * speed * 0.5;
+        default:
+          // pure crosswind or unrecognized
+          return 0;
       }
     }
+
     function getElevationAdjustment(elevStr) {
       const ft = parseFloat(elevStr);
-      return isNaN(ft) ? 0 : ft;  
+      return isNaN(ft) ? 0 : ft;
     }
 
     // ─── 4) Main calculation & UI hookup ─────────────────────────────────────
-    document.getElementById('calcBtn').addEventListener('click',()=>{
-      const dist   = parseFloat(document.getElementById('distance').value);
+    document.getElementById('calcBtn').addEventListener('click', () => {
+      const dist   = parseFloat(document.getElementById('distance').value) || 0;
       const windSp = parseFloat(document.getElementById('windSpeed').value) || 0;
       const windD  = document.getElementById('windDir').value;
       const elev   = document.getElementById('elevation').value;
-      const spin   = parseFloat(document.getElementById('spin').value);
+      const spin   = parseFloat(document.getElementById('spin').value) || 0;
 
-      // 4.1 adjust for wind & elevation
-      const windAdj = getWindAdjustment(windSp, windD);
+      // apply wind & elevation
+      const windAdj = getWindAdjustment(dist, windSp, windD);
       const elevAdj = getElevationAdjustment(elev);
       const target  = dist + windAdj + elevAdj;
 
-      // 4.2 pick the club whose full-power spin distance is closest
+      // pick best club
       let best = {club:null, diff: Infinity, yard:0};
       for (const club in clubData) {
         const yard = getSpinDistance(club, spin);
@@ -200,14 +205,14 @@
         }
       }
 
-      // 4.3 compute required power %
-      const power = Math.min(100, Math.max(0, target / best.yard * 100)).toFixed(0);
+      // compute power%
+      const power = Math.min(100, Math.max(0, (target / best.yard) * 100)).toFixed(0);
 
-      // 4.4 render
+      // render results
       document.getElementById('clubResult').textContent = `▶ Club: ${best.club}`;
       document.getElementById('powerResult').textContent = `▶ Power: ${power}%`;
       document.getElementById('spinResult').textContent  = `▶ Spin: ${spin}%`;
-      document.getElementById('adjDistResult').textContent = 
+      document.getElementById('adjDistResult').textContent =
         `▶ Adjusted Dist.: ${target.toFixed(1)} yd`;
       document.getElementById('result').style.display = 'block';
     });
