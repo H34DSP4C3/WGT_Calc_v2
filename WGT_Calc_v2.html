@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WGT Shot Calculator</title>
+  <style>
+    /* Dark, modern, mobile-friendly theme */
+    body {
+      background-color: #121212; 
+      color: #e0e0e0; 
+      font-family: sans-serif; 
+      margin: 0; 
+      padding: 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: 1rem auto;
+      padding: 1rem;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 0.6rem;
+      margin-top: 0.3rem;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 1.5rem;
+      background: #2979ff;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1463d1;
+    }
+    .result {
+      margin-top: 2rem;
+      background: #1e1e1e;
+      padding: 1rem;
+      border-radius: 4px;
+    }
+    .result p {
+      margin: 0.5rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>WGT Shot Calculator</h1>
+
+    <label for="distance">Distance to Hole (yd)</label>
+    <input type="number" id="distance" placeholder="e.g. 150">
+
+    <label for="windSpeed">Wind Speed (mph)</label>
+    <input type="number" id="windSpeed" placeholder="e.g. 10">
+
+    <label for="windDir">Wind Direction</label>
+    <select id="windDir">
+      <option value="head">Headwind</option>
+      <option value="tail">Tailwind</option>
+      <option value="left">Left Crosswind</option>
+      <option value="right">Right Crosswind</option>
+      <option value="diagHead">Diagonal Headwind</option>
+      <option value="diagTail">Diagonal Tailwind</option>
+    </select>
+
+    <label for="elevation">Elevation Change (ft, use + or –)</label>
+    <input type="text" id="elevation" placeholder="+10 or -5">
+
+    <label for="lie">Lie Condition</label>
+    <select id="lie">
+      <option value="tee">Tee</option>
+      <option value="fairway">Fairway</option>
+      <option value="lightRough">Light Rough</option>
+      <option value="medRough">Medium Rough</option>
+      <option value="heavyRough">Heavy Rough</option>
+      <option value="sand">Sand</option>
+    </select>
+
+    <label for="spin">Desired Backspin</label>
+    <select id="spin">
+      <option value="0">0%</option>
+      <option value="20">20%</option>
+      <option value="40">40%</option>
+      <option value="60">60%</option>
+      <option value="80">80%</option>
+      <option value="100">100% (Full Spin)</option>
+    </select>
+
+    <button id="calcBtn">Calculate Shot</button>
+
+    <div id="result" class="result" style="display:none;">
+      <h2>Recommendation</h2>
+      <p id="clubResult"></p>
+      <p id="powerResult"></p>
+      <p id="spinResult"></p>
+      <p id="adjDistResult"></p>
+    </div>
+  </div>
+
+  <script>
+    // ─── 1) Yardage tables from your images ────────────────────────────────────
+    const clubData = {
+      'Driver':       { spinMapping:{100:323, 95:311, 90:292}, teeAdjustment: 0 },
+      '3W':           { spinMapping:{100:263, 95:251, 90:233}, teeAdjustment: 0 },
+      '3i':           { spinMapping:{50:218, 75:214,100:215}, teeAdjustment: 3 },
+      '4i':           { spinMapping:{50:201, 75:200,100:196}, teeAdjustment: 3 },
+      '5i':           { spinMapping:{50:190, 75:186,100:183}, teeAdjustment: 3 },
+      '6i':           { spinMapping:{50:174, 75:171,100:171}, teeAdjustment: 3 },
+      '7i':           { spinMapping:{50:161, 75:155,100:153}, teeAdjustment: 3 },
+      '8i':           { spinMapping:{50:151, 75:146,100:143}, teeAdjustment: 3 },
+      '9i':           { spinMapping:{50:133, 75:132,100:128}, teeAdjustment: 3 },
+      'PW':           { spinMapping:{50:119, 75:114,100:112}, teeAdjustment: 3 },
+      '64° LW Punch':{ spinMapping:{100:50,  95:47,  90:42 }, teeAdjustment: 0 },
+      '60° LW Punch':{ spinMapping:{100:69,  95:63,  90:58 }, teeAdjustment: 0 },
+      '56° SW Punch':{ spinMapping:{100:84,  95:77,  90:72 }, teeAdjustment: 0 }
+      // → You can extend this object with your fairway-wedge tables from the second image
+    };
+
+    // ─── 2) Linear interpolation for spin% not in table ───────────────────────
+    function getSpinDistance(club, spinPct) {
+      const map = clubData[club].spinMapping;
+      const keys = Object.keys(map).map(Number).sort((a,b)=>a-b);
+      // exact match?
+      if (map[spinPct] !== undefined) {
+        return map[spinPct] + clubData[club].teeAdjustment;
+      }
+      // below lowest → linear extrapolate
+      if (spinPct < keys[0]) {
+        const [p0,p1] = keys;
+        const d0=map[p0], d1=map[p1];
+        const slope = (d1-d0)/(p1-p0);
+        return d0 + slope*(spinPct-p0) + clubData[club].teeAdjustment;
+      }
+      // above highest → clamp to max
+      if (spinPct > keys[keys.length-1]) {
+        return map[keys[keys.length-1]] + clubData[club].teeAdjustment;
+      }
+      // in between → find segment
+      for (let i=0; i<keys.length-1; i++) {
+        const p0 = keys[i], p1 = keys[i+1];
+        if (spinPct > p0 && spinPct < p1) {
+          const d0=map[p0], d1=map[p1];
+          const slope=(d1-d0)/(p1-p0);
+          return d0 + slope*(spinPct-p0) + clubData[club].teeAdjustment;
+        }
+      }
+    }
+
+    // ─── 3) Wind & elevation adjustments ─────────────────────────────────────
+    function getWindAdjustment(speed, dir) {
+      // 1 mph ≈ 1 yd adjustment (tweak as you like)
+      switch(dir) {
+        case 'head':      return  speed;
+        case 'tail':      return -speed;
+        case 'diagHead':  return  speed * 0.5;
+        case 'diagTail':  return -speed * 0.5;
+        default:          return 0; // pure crosswind → no yardage change
+      }
+    }
+    function getElevationAdjustment(elevStr) {
+      const ft = parseFloat(elevStr);
+      return isNaN(ft) ? 0 : ft;  
+    }
+
+    // ─── 4) Main calculation & UI hookup ─────────────────────────────────────
+    document.getElementById('calcBtn').addEventListener('click',()=>{
+      const dist   = parseFloat(document.getElementById('distance').value);
+      const windSp = parseFloat(document.getElementById('windSpeed').value) || 0;
+      const windD  = document.getElementById('windDir').value;
+      const elev   = document.getElementById('elevation').value;
+      const spin   = parseFloat(document.getElementById('spin').value);
+
+      // 4.1 adjust for wind & elevation
+      const windAdj = getWindAdjustment(windSp, windD);
+      const elevAdj = getElevationAdjustment(elev);
+      const target  = dist + windAdj + elevAdj;
+
+      // 4.2 pick the club whose full-power spin distance is closest
+      let best = {club:null, diff: Infinity, yard:0};
+      for (const club in clubData) {
+        const yard = getSpinDistance(club, spin);
+        const diff = Math.abs(yard - target);
+        if (diff < best.diff) {
+          best = { club, diff, yard };
+        }
+      }
+
+      // 4.3 compute required power %
+      const power = Math.min(100, Math.max(0, target / best.yard * 100)).toFixed(0);
+
+      // 4.4 render
+      document.getElementById('clubResult').textContent = `▶ Club: ${best.club}`;
+      document.getElementById('powerResult').textContent = `▶ Power: ${power}%`;
+      document.getElementById('spinResult').textContent  = `▶ Spin: ${spin}%`;
+      document.getElementById('adjDistResult').textContent = 
+        `▶ Adjusted Dist.: ${target.toFixed(1)} yd`;
+      document.getElementById('result').style.display = 'block';
+    });
+  </script>
+</body>
+</html>
