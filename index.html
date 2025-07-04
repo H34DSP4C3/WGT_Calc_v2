@@ -27,10 +27,7 @@
       margin-top: 1rem;
       font-size: 0.95rem;
     }
-    input[type="number"],
-    input[type="range"],
-    select,
-    button {
+    input, select, button {
       width: 100%;
       padding: 0.6rem;
       margin-top: 0.3rem;
@@ -40,15 +37,6 @@
       border-radius: 4px;
       font-size: 1rem;
       box-sizing: border-box;
-    }
-    input[type="range"] {
-      padding: 0;
-      height: 2rem;
-    }
-    #angleDisplay {
-      text-align: right;
-      font-size: 0.9rem;
-      margin-top: 0.2rem;
     }
     button {
       margin-top: 1.5rem;
@@ -80,12 +68,15 @@
     <label for="windSpeed">Wind Speed (mph)</label>
     <input type="number" id="windSpeed" placeholder="e.g. 10">
 
-    <label for="windAngle">
-      Wind Direction<br>
-      <small>(0°=headwind, 90°=left cross, 180°=tail, 270°=right cross)</small>
-    </label>
-    <input type="range" id="windAngle" min="0" max="360" value="0">
-    <div id="angleDisplay">0°</div>
+    <label for="windDir">Wind Direction</label>
+    <select id="windDir">
+      <option value="head">Headwind</option>
+      <option value="tail">Tailwind</option>
+      <option value="left">Left Crosswind</option>
+      <option value="right">Right Crosswind</option>
+      <option value="diagHead">Diagonal Headwind</option>
+      <option value="diagTail">Diagonal Tailwind</option>
+    </select>
 
     <label for="elevation">Elevation Change (ft, use + or –)</label>
     <input type="text" id="elevation" placeholder="+10 or -5">
@@ -123,7 +114,7 @@
   </div>
 
   <script>
-    // ─── Yardage tables with updated Driver & 3W + tee adjustments ─────────
+    // 1) Yardage tables with updated Driver & 3W + tee adjustments
     const clubData = {
       'Driver':        { spinMapping:{100:320,95:311,90:292}, teeAdj: 3 },
       '3W':            { spinMapping:{100:260,95:251,90:233}, teeAdj: 3 },
@@ -140,7 +131,7 @@
       '56° SW Punch': { spinMapping:{100:84,  95:77,  90:72 }, teeAdj: 0 }
     };
 
-    // ─── Spin interpolation ─────────────────────────────────────────────────
+    // 2) Interpolate spin% if not in table
     function getSpinDistance(club, spinPct, lie) {
       const map = clubData[club].spinMapping;
       const keys = Object.keys(map).map(Number).sort((a,b)=>a-b);
@@ -164,72 +155,81 @@
       return d + (lie==='tee' ? clubData[club].teeAdj : 0);
     }
 
-    // ─── Main calculation & UI hookup ──────────────────────────────────────
-    document.getElementById('windAngle').addEventListener('input', e => {
-      document.getElementById('angleDisplay').textContent = e.target.value + '°';
-    });
-
-    document.getElementById('calcBtn').addEventListener('click', () => {
-      const dist     = parseFloat(document.getElementById('distance').value)   || 0;
-      const windSp   = parseFloat(document.getElementById('windSpeed').value)  || 0;
-      const angleDeg = parseFloat(document.getElementById('windAngle').value) || 0;
-      const elevStr  = document.getElementById('elevation').value;
-      const lie      = document.getElementById('lie').value;
-      const spinPct  = parseFloat(document.getElementById('spin').value)      || 0;
-
-      // a) decompose wind into head/tail & cross components
-      const rad       = angleDeg * Math.PI/180;
-      const headComp  = windSp * Math.cos(rad);     // + = headwind, – = tailwind
-      const crossComp = windSp * Math.sin(rad);     // + pushes right, – pushes left
-
-      // b) yard adjustments
-      const headAdj = headComp >= 0
-        ? (dist/200) * headComp
-        : -(dist/250) * headComp;
-      const elevFt   = parseFloat(elevStr);
-      const elevAdj  = isNaN(elevFt) ? 0 : elevFt/3;  // 3 ft ≈ 1 yd
-      const target   = dist + headAdj + elevAdj;
-
-      // c) pick club
-      let best = { club:null, yard:0 };
-      // find smallest yard ≥ target
-      Object.keys(clubData).forEach(club => {
-        const yd = getSpinDistance(club, spinPct, lie);
-        if (yd >= target && (best.club===null || yd < best.yard)) {
-          best = { club, yard: yd };
-        }
-      });
-      // if none can reach, pick the longest
-      if (!best.club) {
-        Object.keys(clubData).forEach(club => {
-          const yd = getSpinDistance(club, spinPct, lie);
-          if (!best.club || yd > best.yard) {
-            best = { club, yard: yd };
-          }
-        });
+    // 3) Wind & elevation adjustments
+    function getWindAdjustment(dist, speed, dir) {
+      switch (dir) {
+        case 'head':     return  (dist/200) * speed;
+        case 'tail':     return -(dist/250) * speed;
+        case 'diagHead': return  (dist/200) * speed * 0.5;
+        case 'diagTail': return -(dist/250) * speed * 0.5;
+        default:         return  0;  // pure crosswind
       }
+    }
+    function getElevationAdjustment(elevStr) {
+      const ft = parseFloat(elevStr);
+      return isNaN(ft) ? 0 : ft / 3;  // 3 ft ≈ 1 yd
+    }
 
-      // d) power%
-      let power = (target / best.yard) * 100;
+    // 4) Grid adjustment for crosswinds (decimal)
+    function getGridAdjustment(dist, speed, dir) {
+      let crossSpeed;
+      if (dir === 'left' || dir === 'right') {
+        crossSpeed = speed;
+      } else if (dir === 'diagHead' || dir === 'diagTail') {
+        crossSpeed = speed * 0.5;
+      } else {
+        return { grids: 0, moveDir: '' };
+      }
+      const yardsCross = (dist / 125) * crossSpeed;
+      const grids = yardsCross / 4;
+      let moveDir = '';
+      if (dir === 'left') moveDir = 'right';
+      else if (dir === 'right') moveDir = 'left';
+      return { grids, moveDir };
+    }
+
+    // 5) Club selection: smallest max-yard ≥ target
+    function pickClub(target, spinPct, lie) {
+      const arr = Object.entries(clubData).map(([club]) => ({
+        club,
+        yard: getSpinDistance(club, spinPct, lie)
+      }));
+      const possible = arr.filter(o => o.yard >= target);
+      if (possible.length) {
+        return possible.reduce((a, b) => a.yard < b.yard ? a : b);
+      }
+      return arr.reduce((a, b) => a.yard > b.yard ? a : b);
+    }
+
+    // 6) UI hookup
+    document.getElementById('calcBtn').addEventListener('click', () => {
+      const dist   = parseFloat(document.getElementById('distance').value) || 0;
+      const windSp = parseFloat(document.getElementById('windSpeed').value) || 0;
+      const windD  = document.getElementById('windDir').value;
+      const elev   = document.getElementById('elevation').value;
+      const lie    = document.getElementById('lie').value;
+      const spin   = parseFloat(document.getElementById('spin').value) || 0;
+
+      const windAdj = getWindAdjustment(dist, windSp, windD);
+      const elevAdj = getElevationAdjustment(elev);
+      const target  = dist + windAdj + elevAdj;
+
+      const { club, yard } = pickClub(target, spin, lie);
+      let power = (target / yard) * 100;
       power = Math.min(100, Math.max(0, power)).toFixed(0);
 
-      // e) grid moves
-      const yardsCross = (dist/125) * Math.abs(crossComp);
-      const grids      = yardsCross / 4;
-      let gridText = '';
-      if (grids > 0) {
-        const dir = crossComp > 0 ? 'right' : 'left';
-        gridText = `${(grids%1===0 ? grids : grids.toFixed(1))} grids ${dir}`;
-      }
+      const { grids, moveDir } = getGridAdjustment(dist, windSp, windD);
+      const gridText = grids > 0
+        ? `${(grids % 1 === 0 ? grids : grids.toFixed(1))} grids${moveDir ? ' ' + moveDir : ''}`
+        : '';
 
-      // f) render
-      document.getElementById('clubResult').textContent  = `▶ Club: ${best.club}`;
+      document.getElementById('clubResult').textContent  = `▶ Club: ${club}`;
       document.getElementById('powerResult').textContent = `▶ Power: ${power}%`;
-      document.getElementById('spinResult').textContent  = `▶ Spin: ${spinPct}%`;
+      document.getElementById('spinResult').textContent  = `▶ Spin: ${spin}%`;
       document.getElementById('adjDistResult').textContent =
         `▶ Adjusted Dist.: ${target.toFixed(1)} yd`;
-      document.getElementById('gridResult').textContent =
-        gridText ? `▶ Grid Move: ${gridText}` : '';
+      document.getElementById('gridResult').textContent = gridText
+        ? `▶ Grid Move: ${gridText}` : '';
       document.getElementById('result').style.display = 'block';
     });
   </script>
