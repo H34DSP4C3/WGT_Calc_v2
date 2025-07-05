@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>WGT Shot Calculator</title>
   <style>
     /* Dark, modern, mobile-friendly theme */
@@ -63,10 +63,10 @@
     <h1>WGT Shot Calculator</h1>
 
     <label for="distance">Distance to Hole (yd)</label>
-    <input type="number" id="distance" placeholder="e.g. 150">
+    <input type="number" id="distance" placeholder="e.g. 150" />
 
     <label for="windSpeed">Wind Speed (mph)</label>
-    <input type="number" id="windSpeed" placeholder="e.g. 10">
+    <input type="number" id="windSpeed" placeholder="e.g. 10" />
 
     <label for="windDir">Wind Direction</label>
     <select id="windDir">
@@ -79,7 +79,7 @@
     </select>
 
     <label for="elevation">Elevation Change (ft, use + or –)</label>
-    <input type="text" id="elevation" placeholder="+10 or -5">
+    <input type="text" id="elevation" placeholder="+10 or -5" />
 
     <label for="lie">Lie Condition</label>
     <select id="lie">
@@ -114,7 +114,10 @@
   </div>
 
   <script>
-    // 1) Yardage tables with updated Driver & 3W + tee adjustments
+    // ─── CONFIG: tweak this if irons still play long/short ────────────────
+    const ironOffset = -2; // subtract 2 yards from every iron/PW
+
+    // ─── 1) Yardage tables with Driver & 3W + tee adjustments ────────────
     const clubData = {
       'Driver':        { spinMapping:{100:320,95:311,90:292}, teeAdj: 3 },
       '3W':            { spinMapping:{100:260,95:251,90:233}, teeAdj: 3 },
@@ -131,7 +134,7 @@
       '56° SW Punch': { spinMapping:{100:84,  95:77,  90:72 }, teeAdj: 0 }
     };
 
-    // 2) Interpolate spin% if not in table
+    // ─── 2) Interpolate & apply offsets ──────────────────────────────────
     function getSpinDistance(club, spinPct, lie) {
       const map = clubData[club].spinMapping;
       const keys = Object.keys(map).map(Number).sort((a,b)=>a-b);
@@ -139,23 +142,31 @@
       if (map[spinPct] !== undefined) {
         d = map[spinPct];
       } else if (spinPct < keys[0]) {
-        const [p0,p1] = keys, d0=map[p0], d1=map[p1], m=(d1-d0)/(p1-p0);
-        d = d0 + m*(spinPct-p0);
+        const [p0,p1] = keys,
+              d0 = map[p0], d1 = map[p1],
+              m  = (d1 - d0)/(p1 - p0);
+        d = d0 + m*(spinPct - p0);
       } else if (spinPct > keys[keys.length-1]) {
         d = map[keys[keys.length-1]];
       } else {
         for (let i=0; i<keys.length-1; i++){
-          const p0=keys[i], p1=keys[i+1], d0=map[p0], d1=map[p1], m=(d1-d0)/(p1-p0);
+          const p0 = keys[i], p1 = keys[i+1],
+                d0 = map[p0],  d1 = map[p1],
+                m  = (d1 - d0)/(p1 - p0);
           if (spinPct>p0 && spinPct<p1) {
-            d = d0 + m*(spinPct-p0);
+            d = d0 + m*(spinPct - p0);
             break;
           }
         }
       }
-      return d + (lie==='tee' ? clubData[club].teeAdj : 0);
+      // add tee adj, then ironOffset for irons/PW
+      const base = d + (lie==='tee'? clubData[club].teeAdj: 0);
+      return (club.endsWith('i') || club==='PW')
+        ? base + ironOffset
+        : base;
     }
 
-    // 3) Wind & elevation adjustments
+    // ─── 3) Wind & elevation adjustments ─────────────────────────────────
     function getWindAdjustment(dist, speed, dir) {
       switch (dir) {
         case 'head':     return  (dist/200) * speed;
@@ -167,60 +178,55 @@
     }
     function getElevationAdjustment(elevStr) {
       const ft = parseFloat(elevStr);
-      return isNaN(ft) ? 0 : ft / 3;  // 3 ft ≈ 1 yd
+      return isNaN(ft) ? 0 : ft / 3; // 3 ft ≈ 1 yd
     }
 
-    // 4) Grid adjustment for crosswinds (decimal)
+    // ─── 4) Grid adjustment for crosswinds (decimal) ────────────────────
     function getGridAdjustment(dist, speed, dir) {
       let crossSpeed;
-      if (dir === 'left' || dir === 'right') {
-        crossSpeed = speed;
-      } else if (dir === 'diagHead' || dir === 'diagTail') {
-        crossSpeed = speed * 0.5;
-      } else {
-        return { grids: 0, moveDir: '' };
-      }
-      const yardsCross = (dist / 125) * crossSpeed;
-      const grids = yardsCross / 4;
-      let moveDir = '';
-      if (dir === 'left') moveDir = 'right';
-      else if (dir === 'right') moveDir = 'left';
+      if (dir==='left'||dir==='right')       crossSpeed = speed;
+      else if (dir==='diagHead'||dir==='diagTail') crossSpeed = speed * 0.5;
+      else return { grids: 0, moveDir: '' };
+
+      const yardsCross = (dist/125) * crossSpeed;
+      const grids      = yardsCross/4;
+      let moveDir      = (dir==='left'?'right':dir==='right'?'left':'');
       return { grids, moveDir };
     }
 
-    // 5) Club selection: smallest max-yard ≥ target
+    // ─── 5) Club pick ─────────────────────────────────────────────────────
     function pickClub(target, spinPct, lie) {
-      const arr = Object.entries(clubData).map(([club]) => ({
-        club,
-        yard: getSpinDistance(club, spinPct, lie)
+      const arr = Object.entries(clubData).map(([club])=>({
+        club, yard: getSpinDistance(club, spinPct, lie)
       }));
-      const possible = arr.filter(o => o.yard >= target);
+      let possible = arr.filter(o=>o.yard >= target);
       if (possible.length) {
-        return possible.reduce((a, b) => a.yard < b.yard ? a : b);
+        return possible.reduce((a,b)=> a.yard < b.yard ? a : b);
       }
-      return arr.reduce((a, b) => a.yard > b.yard ? a : b);
+      // fallback → longest club
+      return arr.reduce((a,b)=> a.yard > b.yard ? a : b);
     }
 
-    // 6) UI hookup
-    document.getElementById('calcBtn').addEventListener('click', () => {
-      const dist   = parseFloat(document.getElementById('distance').value) || 0;
-      const windSp = parseFloat(document.getElementById('windSpeed').value) || 0;
+    // ─── 6) UI hookup ─────────────────────────────────────────────────────
+    document.getElementById('calcBtn').addEventListener('click', ()=> {
+      const dist   = parseFloat(document.getElementById('distance').value)||0;
+      const windSp = parseFloat(document.getElementById('windSpeed').value)||0;
       const windD  = document.getElementById('windDir').value;
       const elev   = document.getElementById('elevation').value;
       const lie    = document.getElementById('lie').value;
-      const spin   = parseFloat(document.getElementById('spin').value) || 0;
+      const spin   = parseFloat(document.getElementById('spin').value)||0;
 
       const windAdj = getWindAdjustment(dist, windSp, windD);
       const elevAdj = getElevationAdjustment(elev);
       const target  = dist + windAdj + elevAdj;
 
-      const { club, yard } = pickClub(target, spin, lie);
-      let power = (target / yard) * 100;
-      power = Math.min(100, Math.max(0, power)).toFixed(0);
+      const {club, yard} = pickClub(target, spin, lie);
+      let power = (target/yard)*100;
+      power = Math.min(100,Math.max(0,power)).toFixed(0);
 
-      const { grids, moveDir } = getGridAdjustment(dist, windSp, windD);
-      const gridText = grids > 0
-        ? `${(grids % 1 === 0 ? grids : grids.toFixed(1))} grids${moveDir ? ' ' + moveDir : ''}`
+      const {grids,moveDir} = getGridAdjustment(dist, windSp, windD);
+      const gridText = grids>0
+        ? `${grids%1===0?grids:grids.toFixed(1)} grids${moveDir?' '+moveDir:''}`
         : '';
 
       document.getElementById('clubResult').textContent  = `▶ Club: ${club}`;
@@ -228,8 +234,8 @@
       document.getElementById('spinResult').textContent  = `▶ Spin: ${spin}%`;
       document.getElementById('adjDistResult').textContent =
         `▶ Adjusted Dist.: ${target.toFixed(1)} yd`;
-      document.getElementById('gridResult').textContent = gridText
-        ? `▶ Grid Move: ${gridText}` : '';
+      document.getElementById('gridResult').textContent =
+        gridText?`▶ Grid Move: ${gridText}`:'';
       document.getElementById('result').style.display = 'block';
     });
   </script>
