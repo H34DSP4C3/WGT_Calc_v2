@@ -1,4 +1,4 @@
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -114,10 +114,9 @@
   </div>
 
   <script>
-    // ─── CONFIG: tweak this if irons still play long/short ────────────────
-    const ironOffset = -2; // subtract 2 yards from every iron/PW
+    // tweak if irons still play long: negative trims, positive adds yards
+    const ironOffset = -2;
 
-    // ─── 1) Yardage tables with Driver & 3W + tee adjustments ────────────
     const clubData = {
       'Driver':        { spinMapping:{100:320,95:311,90:292}, teeAdj: 3 },
       '3W':            { spinMapping:{100:260,95:251,90:233}, teeAdj: 3 },
@@ -134,7 +133,6 @@
       '56° SW Punch': { spinMapping:{100:84,  95:77,  90:72 }, teeAdj: 0 }
     };
 
-    // ─── 2) Interpolate & apply offsets ──────────────────────────────────
     function getSpinDistance(club, spinPct, lie) {
       const map = clubData[club].spinMapping;
       const keys = Object.keys(map).map(Number).sort((a,b)=>a-b);
@@ -142,73 +140,58 @@
       if (map[spinPct] !== undefined) {
         d = map[spinPct];
       } else if (spinPct < keys[0]) {
-        const [p0,p1] = keys,
-              d0 = map[p0], d1 = map[p1],
-              m  = (d1 - d0)/(p1 - p0);
-        d = d0 + m*(spinPct - p0);
+        const [p0,p1] = keys, d0=map[p0], d1=map[p1], m=(d1-d0)/(p1-p0);
+        d = d0 + m*(spinPct-p0);
       } else if (spinPct > keys[keys.length-1]) {
         d = map[keys[keys.length-1]];
       } else {
         for (let i=0; i<keys.length-1; i++){
-          const p0 = keys[i], p1 = keys[i+1],
-                d0 = map[p0],  d1 = map[p1],
-                m  = (d1 - d0)/(p1 - p0);
-          if (spinPct>p0 && spinPct<p1) {
-            d = d0 + m*(spinPct - p0);
-            break;
-          }
+          const p0=keys[i], p1=keys[i+1], d0=map[p0], d1=map[p1], m=(d1-d0)/(p1-p0);
+          if (spinPct>p0 && spinPct<p1) { d = d0 + m*(spinPct-p0); break; }
         }
       }
-      // add tee adj, then ironOffset for irons/PW
-      const base = d + (lie==='tee'? clubData[club].teeAdj: 0);
-      return (club.endsWith('i') || club==='PW')
+      const base = d + (lie==='tee'? clubData[club].teeAdj : 0);
+      return (club.endsWith('i')||club==='PW')
         ? base + ironOffset
         : base;
     }
 
-    // ─── 3) Wind & elevation adjustments ─────────────────────────────────
     function getWindAdjustment(dist, speed, dir) {
       switch (dir) {
-        case 'head':     return  (dist/200) * speed;
-        case 'tail':     return -(dist/250) * speed;
-        case 'diagHead': return  (dist/200) * speed * 0.5;
-        case 'diagTail': return -(dist/250) * speed * 0.5;
-        default:         return  0;  // pure crosswind
+        case 'head':     return  (dist/200)*speed;
+        case 'tail':     return -(dist/250)*speed;
+        case 'diagHead': return  (dist/200)*speed*0.5;
+        case 'diagTail': return -(dist/250)*speed*0.5;
+        default:         return  0;
       }
     }
     function getElevationAdjustment(elevStr) {
       const ft = parseFloat(elevStr);
-      return isNaN(ft) ? 0 : ft / 3; // 3 ft ≈ 1 yd
+      return isNaN(ft) ? 0 : ft/3;
     }
 
-    // ─── 4) Grid adjustment for crosswinds (decimal) ────────────────────
     function getGridAdjustment(dist, speed, dir) {
       let crossSpeed;
-      if (dir==='left'||dir==='right')       crossSpeed = speed;
-      else if (dir==='diagHead'||dir==='diagTail') crossSpeed = speed * 0.5;
-      else return { grids: 0, moveDir: '' };
+      if (dir==='left'||dir==='right') crossSpeed = speed;
+      else if (dir==='diagHead'||dir==='diagTail') crossSpeed = speed*0.5;
+      else return { grids:0, moveDir:'' };
 
-      const yardsCross = (dist/125) * crossSpeed;
-      const grids      = yardsCross/4;
-      let moveDir      = (dir==='left'?'right':dir==='right'?'left':'');
+      const yardsCross = (dist/125)*crossSpeed;
+      const grids = yardsCross/4;
+      const moveDir = dir==='left'?'right':dir==='right'?'left':'';
       return { grids, moveDir };
     }
 
-    // ─── 5) Club pick ─────────────────────────────────────────────────────
     function pickClub(target, spinPct, lie) {
       const arr = Object.entries(clubData).map(([club])=>({
-        club, yard: getSpinDistance(club, spinPct, lie)
+        club, yard:getSpinDistance(club,spinPct,lie)
       }));
-      let possible = arr.filter(o=>o.yard >= target);
-      if (possible.length) {
-        return possible.reduce((a,b)=> a.yard < b.yard ? a : b);
-      }
-      // fallback → longest club
-      return arr.reduce((a,b)=> a.yard > b.yard ? a : b);
+      const possible = arr.filter(o=>o.yard>=target);
+      if (possible.length) return possible.reduce((a,b)=>a.yard<b.yard?a:b);
+      return arr.reduce((a,b)=>a.yard>b.yard?a:b);
     }
 
-    // ─── 6) UI hookup ─────────────────────────────────────────────────────
-    document.getElementById('calcBtn').addEventListener('click', ()=> {
+    document.getElementById('calcBtn').addEventListener('click', ()=>{
       const dist   = parseFloat(document.getElementById('distance').value)||0;
       const windSp = parseFloat(document.getElementById('windSpeed').value)||0;
       const windD  = document.getElementById('windDir').value;
@@ -216,15 +199,15 @@
       const lie    = document.getElementById('lie').value;
       const spin   = parseFloat(document.getElementById('spin').value)||0;
 
-      const windAdj = getWindAdjustment(dist, windSp, windD);
+      const windAdj = getWindAdjustment(dist,windSp,windD);
       const elevAdj = getElevationAdjustment(elev);
-      const target  = dist + windAdj + elevAdj;
+      const target  = dist+windAdj+elevAdj;
 
-      const {club, yard} = pickClub(target, spin, lie);
+      const {club,yard} = pickClub(target,spin,lie);
       let power = (target/yard)*100;
       power = Math.min(100,Math.max(0,power)).toFixed(0);
 
-      const {grids,moveDir} = getGridAdjustment(dist, windSp, windD);
+      const {grids,moveDir} = getGridAdjustment(dist,windSp,windD);
       const gridText = grids>0
         ? `${grids%1===0?grids:grids.toFixed(1)} grids${moveDir?' '+moveDir:''}`
         : '';
